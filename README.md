@@ -1,6 +1,6 @@
 # Pair Cricket Scorer
 
-Mobile-first scoring app for a four-team custom cricket league:
+App for cricket scoring. Mobile-first scoring app for a four-team custom cricket league:
 
 - 4 teams, 6 round-robin matches, and a final
 - Configurable innings length, usually 15 or 18 overs
