@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "leagues": {
+      "$leagueId": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}
