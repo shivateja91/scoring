@@ -2,11 +2,12 @@
 // Keep this file committed with empty values, then fill it in after creating
 // a free Firebase project and enabling Realtime Database.
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
+  apiKey: "AIzaSyDxne7PIbcNHZag55S6P7-9OlSb1c-3fTQ",
+  authDomain: "scoring-5f98b.firebaseapp.com",
   databaseURL: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  projectId: "scoring-5f98b",
+  storageBucket: "scoring-5f98b.firebasestorage.app",
+  messagingSenderId: "151696966096",
+  appId: "1:151696966096:web:3181ca140b14efceda39d5",
+  measurementId: "G-BQ0YRE20FV"
 };
