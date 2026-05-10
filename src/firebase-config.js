@@ -4,7 +4,7 @@
 export const firebaseConfig = {
   apiKey: "AIzaSyDxne7PIbcNHZag55S6P7-9OlSb1c-3fTQ",
   authDomain: "scoring-5f98b.firebaseapp.com",
-  databaseURL: "",
+  databaseURL: "https://scoring-5f98b-default-rtdb.firebaseio.com/",
   projectId: "scoring-5f98b",
   storageBucket: "scoring-5f98b.firebasestorage.app",
   messagingSenderId: "151696966096",
