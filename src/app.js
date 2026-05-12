@@ -58,6 +58,38 @@ function makeMatch(homeId, awayId, label) {
   };
 }
 
+function normalizeLeague(value) {
+  const fallback = emptyLeague();
+  const league = value && typeof value === "object" ? value : {};
+  const teams = Array.isArray(league.teams) ? league.teams : fallback.teams;
+  const matches = Array.isArray(league.matches) ? league.matches : [];
+  return {
+    ...fallback,
+    ...league,
+    teams: teams.map((team, index) => ({
+      id: team.id || fallback.teams[index]?.id || uid(),
+      name: team.name || fallback.teams[index]?.name || `Team ${index + 1}`,
+      players: Array.isArray(team.players) ? team.players : [],
+      pairs: Array.isArray(team.pairs) ? team.pairs : []
+    })),
+    matches: matches.map((match) => ({
+      id: match.id || uid(),
+      label: match.label || "Match",
+      homeId: match.homeId || "",
+      awayId: match.awayId || "",
+      status: match.status || "scheduled",
+      tossWinnerId: match.tossWinnerId || "",
+      innings: Array.isArray(match.innings) ? match.innings.map((innings) => ({
+        ...innings,
+        pairSlots: Array.isArray(innings.pairSlots) ? innings.pairSlots : [],
+        bowlersByOver: Array.isArray(innings.bowlersByOver) ? innings.bowlersByOver : [],
+        goldenStrikers: Array.isArray(innings.goldenStrikers) ? innings.goldenStrikers : [],
+        balls: Array.isArray(innings.balls) ? innings.balls : []
+      })) : []
+    }))
+  };
+}
+
 async function initBackend() {
   if (!hasFirebaseConfig) {
     state.backend = localBackend();
@@ -80,14 +112,14 @@ function localBackend() {
     mode: "Demo",
     async load() {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : emptyLeague();
+      return saved ? normalizeLeague(JSON.parse(saved)) : emptyLeague();
     },
     async save(league) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(league));
     },
     subscribe(callback) {
       const onStorage = (event) => {
-        if (event.key === STORAGE_KEY && event.newValue) callback(JSON.parse(event.newValue));
+        if (event.key === STORAGE_KEY && event.newValue) callback(normalizeLeague(JSON.parse(event.newValue)));
       };
       addEventListener("storage", onStorage);
       return () => removeEventListener("storage", onStorage);
@@ -107,7 +139,7 @@ function firebaseBackend(db, ref, set, onValue, leagueId) {
         const stop = onValue(leagueRef, (snapshot) => {
           clearTimeout(timeout);
           stop();
-          resolve(snapshot.val() || { ...emptyLeague(), id: leagueId });
+          resolve(normalizeLeague(snapshot.val() || { ...emptyLeague(), id: leagueId }));
         }, (error) => {
           clearTimeout(timeout);
           stop();
@@ -120,7 +152,7 @@ function firebaseBackend(db, ref, set, onValue, leagueId) {
     },
     subscribe(callback) {
       return onValue(leagueRef, (snapshot) => {
-        if (snapshot.exists()) callback(snapshot.val());
+        if (snapshot.exists()) callback(normalizeLeague(snapshot.val()));
       }, (error) => {
         console.error("Firebase subscription failed", error);
         toast(`Firebase error: ${error.message}`);
