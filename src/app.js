@@ -628,7 +628,6 @@ function teamPanel(team) {
       </div>
       <div class="toolbar">
         <button class="btn small" data-action="add-player" data-team="${team.id}">Add Player</button>
-        <button class="btn small" data-action="auto-pair" data-team="${team.id}">Auto Pair</button>
       </div>
       <div class="card-list">
         ${team.players.map((player) => playerRow(team, player)).join("") || `<div class="empty">Add players before pairing.</div>`}
@@ -699,7 +698,9 @@ function validatePairs(team) {
 }
 
 function matchWorkspace() {
-  const match = byId(state.league.matches, state.matchId) || state.league.matches.find((m) => m.status === "live") || state.league.matches[0];
+  const selected = byId(state.league.matches, state.matchId);
+  const fallback = state.league.matches.find((m) => m.status === "live") || state.league.matches[0];
+  const match = selected || fallback;
   if (!match) return "";
   return html`
     <section class="panel">
@@ -709,6 +710,9 @@ function matchWorkspace() {
           <p class="panel-note">${match.status}</p>
         </div>
         <button class="btn small" data-route="viewer" data-match="${match.id}">Public Board</button>
+      </div>
+      <div class="toolbar panel-pad">
+        ${state.league.matches.map((m) => `<button class="btn small ${m.id === match.id ? "primary" : ""}" data-action="open-match" data-id="${m.id}">${m.label} ${m.status === "live" ? "Live" : ""}</button>`).join("")}
       </div>
       <div class="panel-pad">${scoreMatch(match, true)}</div>
     </section>
@@ -1021,10 +1025,12 @@ function bindEvents() {
     if (action === "logout") logout();
     if (action === "schedule") save(createSchedule);
     if (action === "open-match") setRoute("admin", el.dataset.id);
-    if (action === "start-match") startMatch(el.dataset.id);
+    if (action === "start-match") {
+      startMatch(el.dataset.id);
+      setRoute("admin", el.dataset.id);
+    }
     if (action === "add-player") addPlayer(el.dataset.team);
     if (action === "remove-player") removePlayer(el.dataset.team, el.dataset.player);
-    if (action === "auto-pair") autoPair(el.dataset.team);
     if (action === "start-innings") startInnings(el.dataset.match, el.dataset.team);
     if (action === "ball") addBall(el.dataset.id, Number(el.dataset.run), false);
     if (action === "extra") addBall(el.dataset.id, Number(el.dataset.run), false, { legal: false, extraType: el.dataset.extra });
@@ -1132,17 +1138,6 @@ function removePlayer(teamId, playerId) {
     const team = byId(league.teams, teamId);
     team.players = team.players.filter((player) => player.id !== playerId);
     team.pairs = team.pairs.filter((pair) => pair.playerAId !== playerId && pair.playerBId !== playerId);
-  });
-}
-
-function autoPair(teamId) {
-  save((league) => {
-    const team = byId(league.teams, teamId);
-    const players = [...team.players];
-    team.pairs = [];
-    for (let i = 0; i < players.length; i += 2) {
-      if (players[i + 1]) team.pairs.push({ id: uid(), playerAId: players[i].id, playerBId: players[i + 1].id });
-    }
   });
 }
 
