@@ -6,7 +6,7 @@ export const firebaseConfig = {
   authDomain: "scoring-5f98b.firebaseapp.com",
   databaseURL: "https://scoring-5f98b-default-rtdb.firebaseio.com/",
   projectId: "scoring-5f98b",
-  storageBucket: "scoring-5f98b.firebasestorage.app",
+  storageBucket: "scoring-5f98b.appspot.com",
   messagingSenderId: "151696966096",
   appId: "1:151696966096:web:3181ca140b14efceda39d5",
   measurementId: "G-BQ0YRE20FV"
