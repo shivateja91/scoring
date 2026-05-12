@@ -134,8 +134,13 @@ async function save(mutator) {
   mutator(next);
   next.updatedAt = Date.now();
   state.league = next;
-  await state.backend.save(next);
   render();
+  try {
+    await state.backend.save(next);
+  } catch (error) {
+    console.error("Save failed", error);
+    toast(`Save failed: ${error.message}`);
+  }
 }
 
 function toast(message) {
