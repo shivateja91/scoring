@@ -84,7 +84,8 @@ function normalizeLeague(value) {
         pairSlots: Array.isArray(innings.pairSlots) ? innings.pairSlots : [],
         bowlersByOver: Array.isArray(innings.bowlersByOver) ? innings.bowlersByOver : [],
         goldenStrikers: Array.isArray(innings.goldenStrikers) ? innings.goldenStrikers : [],
-        balls: Array.isArray(innings.balls) ? innings.balls : []
+        balls: Array.isArray(innings.balls) ? innings.balls : [],
+        scoreAdjustment: Number.isFinite(Number(innings.scoreAdjustment)) ? Number(innings.scoreAdjustment) : 0
       })) : []
     }))
   };
@@ -231,7 +232,7 @@ function currentInnings(match) {
 
 function inningsScore(innings) {
   if (!innings) return { runs: 0, wickets: 0, balls: 0, rawRuns: 0, penalties: 0 };
-  return innings.balls.reduce((acc, ball) => {
+  const totals = innings.balls.reduce((acc, ball) => {
     acc.runs += ball.runs;
     acc.rawRuns += (ball.extraBase || 0) + (ball.scoringRuns ?? ball.rawRuns);
     acc.penalties += ball.penalty;
@@ -239,6 +240,8 @@ function inningsScore(innings) {
     acc.balls += ball.legal === false ? 0 : 1;
     return acc;
   }, { runs: 0, wickets: 0, balls: 0, rawRuns: 0, penalties: 0 });
+  totals.runs += Number(innings.scoreAdjustment) || 0;
+  return totals;
 }
 
 function legalOverIndex(innings) {
@@ -301,7 +304,11 @@ function startMatch(matchId) {
 function startInnings(matchId, battingTeamId) {
   save((league) => {
     const match = byId(league.matches, matchId);
+    if (!match) return;
+    if (!battingTeamId || (battingTeamId !== match.homeId && battingTeamId !== match.awayId)) return;
+    if (match.innings.length) return;
     const bowlingTeamId = match.homeId === battingTeamId ? match.awayId : match.homeId;
+    if (!bowlingTeamId) return;
     match.status = "live";
     match.innings.push({
       id: uid(),
@@ -311,6 +318,7 @@ function startInnings(matchId, battingTeamId) {
       bowlersByOver: [],
       goldenStrikers: [],
       balls: [],
+      scoreAdjustment: 0,
       startedAt: Date.now()
     });
   });
@@ -333,6 +341,7 @@ function endInnings(matchId) {
       bowlersByOver: [],
       goldenStrikers: [],
       balls: [],
+      scoreAdjustment: 0,
       startedAt: Date.now()
     });
   });
@@ -341,11 +350,20 @@ function endInnings(matchId) {
 function addBall(matchId, rawRuns, wicket, options = {}) {
   save((league) => {
     const match = byId(league.matches, matchId);
+    if (!match || match.status === "completed") return;
     const innings = currentInnings(match);
+    if (!innings) return;
+    const currentScore = inningsScore(innings);
+    if (currentScore.balls >= league.oversPerInnings * 6) return;
     const battingTeam = byId(league.teams, innings.battingTeamId);
+    if (!battingTeam) return;
     const ballInOver = legalBallCount(innings) % 6;
     const overIndex = legalOverIndex(innings);
     const pair = pairForOver(battingTeam, overIndex, innings);
+    if (!pair) return;
+    if (overIndex % 3 === 2 && !innings.goldenStrikers?.[pairBlockIndex(overIndex)]) return;
+    const bowlerId = bowlerIdForOver(innings, overIndex);
+    if (!bowlerId) return;
     const strikerId = strikerIdForBall(innings, battingTeam, ballInOver);
     const striker = byId(battingTeam.players, strikerId);
     const isGolden = overIndex % 3 === 2;
@@ -365,12 +383,42 @@ function addBall(matchId, rawRuns, wicket, options = {}) {
       causesStrikeChange,
       legal: options.legal !== false,
       strikerId,
-      bowlerId: bowlerIdForOver(innings, overIndex),
+      bowlerId,
       pairId: pair?.id || "",
       isGolden,
       overIndex,
       at: Date.now()
     });
+
+    // Auto-advance innings as soon as the configured legal-ball quota is reached.
+    const updatedBalls = legalBallCount(innings);
+    if (updatedBalls >= league.oversPerInnings * 6) {
+      if (match.innings.length >= 2) {
+        match.status = "completed";
+      } else {
+        match.innings.push({
+          id: uid(),
+          battingTeamId: innings.bowlingTeamId,
+          bowlingTeamId: innings.battingTeamId,
+          pairSlots: [],
+          bowlersByOver: [],
+          goldenStrikers: [],
+          balls: [],
+          scoreAdjustment: 0,
+          startedAt: Date.now()
+        });
+      }
+    }
+  });
+}
+
+function adjustInningsScore(matchId, delta) {
+  save((league) => {
+    const match = byId(league.matches, matchId);
+    if (!match) return;
+    const innings = currentInnings(match);
+    if (!innings) return;
+    innings.scoreAdjustment = (Number(innings.scoreAdjustment) || 0) + delta;
   });
 }
 
@@ -750,6 +798,7 @@ function scorerControls(match, innings, battingTeam, bowlingTeam, pair, isComple
   if (!bowler) return `${bowlerSelectionPanel(match, innings, bowlingTeam, overIndex)}${recentBalls(innings)}`;
   const blocked = !pair || isCompleteQuota;
   const extraRuns = [0, 1, 2, 3, 4, 6];
+  const wideRuns = [0, 1, 2, 3, 4];
   return html`
     <div class="panel panel-pad">
       <div class="score-row">
@@ -766,7 +815,8 @@ function scorerControls(match, innings, battingTeam, bowlingTeam, pair, isComple
       </div>
       <p class="panel-note section">Wide and no-ball do not count as legal balls. The number is runs taken in addition to the one-run extra; in golden overs the extra and added runs use golden scoring.</p>
       <div class="extra-controls section">
-        ${extraRuns.map((run) => `<button class="extra-btn" data-action="extra" data-extra="wide" data-id="${match.id}" data-run="${run}" ${blocked ? "disabled" : ""}>Wd +${run}</button>`).join("")}
+        ${wideRuns.map((run) => `<button class="extra-btn" data-action="extra" data-extra="wide" data-id="${match.id}" data-run="${run}" ${blocked ? "disabled" : ""}>Wd +${run}</button>`).join("")}
+        <button class="extra-btn" data-action="adjust-minus-one" data-id="${match.id}" ${!innings ? "disabled" : ""}>-1</button>
         ${extraRuns.map((run) => `<button class="extra-btn" data-action="extra" data-extra="noball" data-id="${match.id}" data-run="${run}" ${blocked ? "disabled" : ""}>Nb +${run}</button>`).join("")}
       </div>
     </div>
@@ -979,6 +1029,7 @@ function bindEvents() {
     if (action === "ball") addBall(el.dataset.id, Number(el.dataset.run), false);
     if (action === "extra") addBall(el.dataset.id, Number(el.dataset.run), false, { legal: false, extraType: el.dataset.extra });
     if (action === "wicket") addBall(el.dataset.id, 0, true);
+    if (action === "adjust-minus-one") adjustInningsScore(el.dataset.id, -1);
     if (action === "undo") undoBall(el.dataset.id);
     if (action === "end-innings") endInnings(el.dataset.id);
   });
@@ -990,8 +1041,10 @@ function bindEvents() {
     if (form.dataset.form === "settings") {
       const data = new FormData(form);
       save((league) => {
+        const parsedOvers = Number(data.get("overs"));
+        const roundedOvers = Number.isFinite(parsedOvers) ? Math.max(3, Math.round(parsedOvers / 3) * 3) : 18;
         league.name = data.get("name").trim() || league.name;
-        league.oversPerInnings = Number(data.get("overs")) || 18;
+        league.oversPerInnings = roundedOvers;
         league.wicketPenaltyMale = Number(data.get("malePenalty")) || 5;
         league.wicketPenaltyFemale = Number(data.get("femalePenalty")) || 2;
         league.adminPin = data.get("pin").trim() || "1234";
